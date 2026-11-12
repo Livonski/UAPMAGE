@@ -42,7 +42,7 @@ class MapInterface:
         self.regenerateMap()
 
     def regenerateMap(self):
-        self.pixels = self.generateMap(self.settings)
+        self.pixels = self.generateMap()
         surface = pygame.image.frombuffer(self.pixels, (self.width, self.height), "RGB")
         self.mapImage = pygame.transform.scale(surface, (self.mapWidth, self.mapHeight))
 
