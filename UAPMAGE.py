@@ -1,19 +1,22 @@
-import pygame
-
 import random
 import math
+import array as arr
+from functools import lru_cache
 
-WIDTH, HEIGHT, SCALE = 256, 256, 3
+from interface import MapInterface
 
-SEED = 42
+WIDTH, HEIGHT = 256, 256
 
-FREQUENCY = 0.02
-OCTAVES = 4
-PERSISTENCE = 0.5
-LACUNARITY = 2.0
-
-OFFSETX = 0
-OFFSETY = 0
+heightSettings = {
+    "scale": 65.0,
+    "octaves": 5,
+    "persistence": 0.6,
+    "lacunarity": 2.0,
+    "offset_x": 0,
+    "offset_y": 0,
+    "contrast": 2.0,
+    "seed": 42,
+}
 
 def dot(a, b):
     return a[0]*b[0] + a[1]*b[1]
@@ -24,25 +27,24 @@ def lerp(a, b, t):
 def fade(t):
     return t * t * t * (t * (t * 6 - 15) + 10)
 
-def randomGradient(x, y):
-    seed = (x * 73856093) ^ (y * 19349663) ^ SEED
-    rng = random.Random(seed)
-
+@lru_cache(maxsize=65536)
+def randomGradient(x, y, seed):
+    key = (x * 73856093) ^ (y * 19349663) ^ seed
+    rng = random.Random(key)
     angle = rng.random() * math.tau
-
     return(math.cos(angle), math.sin(angle))
 
-def perlinNoise(x, y):
+def perlinNoise(x, y, seed):
     cellX = math.floor(x)
     cellY = math.floor(y)
 
     localX = x - cellX
     localY = y - cellY
 
-    gradientA = randomGradient(cellX,     cellY)
-    gradientB = randomGradient(cellX + 1, cellY)
-    gradientC = randomGradient(cellX,     cellY + 1)
-    gradientD = randomGradient(cellX + 1, cellY + 1)
+    gradientA = randomGradient(cellX,     cellY,     seed)
+    gradientB = randomGradient(cellX + 1, cellY,     seed)
+    gradientC = randomGradient(cellX,     cellY + 1, seed)
+    gradientD = randomGradient(cellX + 1, cellY + 1, seed)
 
     distanceA = (localX,     localY)
     distanceB = (localX - 1, localY)
@@ -62,44 +64,56 @@ def perlinNoise(x, y):
 
     return lerp(top, bottom, v)
 
-def fractalNoise(x, y, octaves, frequency, persistence, lacunarity):
+def fractalNoise(x, y, settings):
     total = 0
     maxAmplitude = 0
-
     amplitude = 1.0
+    frequency = 1.0
 
-    for i in range(octaves):
-        total += perlinNoise((x + OFFSETX) * frequency, (y + OFFSETY) * frequency) * amplitude
+    sampleX = (x + settings["offset_x"]) / settings["scale"]
+    sampleY = (y + settings["offset_y"]) / settings["scale"]
+
+    for i in range(settings["octaves"]):
+        total += perlinNoise(sampleX * frequency, sampleY * frequency, settings["seed"]) * amplitude
         
         maxAmplitude += amplitude
         
-        frequency *= lacunarity
-        amplitude *= persistence
+        frequency *= settings["lacunarity"]
+        amplitude *= settings["persistence"]
 
     return total / maxAmplitude if maxAmplitude > 0 else 0
 
-pixels = bytearray(WIDTH * HEIGHT * 3)
+def generateHeightMap(settings):
+    hMap = arr.array('f')
 
-for y in range(HEIGHT):
-    for x in range(WIDTH):
-        noise = fractalNoise(x, y, OCTAVES, FREQUENCY, PERSISTENCE, LACUNARITY)
+    for y in range(HEIGHT):
+        for x in range(WIDTH):
+            noise = fractalNoise(x, y, settings)
 
-        pValue = int((noise + 1) * 0.5 * 255)
-        pValue = max(0, min(255, pValue))
+            pValue = int((noise * settings["contrast"] + 1) * 0.5 * 255)
+            hMap.append(pValue)
 
-        color = (pValue, pValue, pValue)
-        
-        i = (y * WIDTH + x) * 3
-        pixels[i:i+3] = bytes(color)
+    return hMap    
 
-pygame.init()
-window = pygame.display.set_mode((WIDTH * SCALE, HEIGHT * SCALE))
-surface = pygame.image.frombuffer(pixels, (WIDTH, HEIGHT), "RGB")
+#def generateTemperatureMap():
+#    tMap = array.Array()
+#    for y in range(HEIGHT):
+#        for x in range(WIDTH):
+#
+#    return tMap
 
-window.blit(pygame.transform.scale(surface, window.get_size()), (0, 0))
-pygame.display.flip()
+def generateMap(settings):
+    pixels = bytearray(WIDTH * HEIGHT * 3)
+    hMap = generateHeightMap(heightSettings)
+    for y in range(HEIGHT):
+        for x in range(WIDTH):
+            hValue = max(0, min(255, hMap[y * WIDTH + x]))
+            i = (y * WIDTH + x) * 3
 
-while pygame.event.wait().type != pygame.QUIT:
-    pass
+            color = (181, 230, 29) if hValue < 128 else (86, 193, 220)
+            pixels[i:i+3] = bytes(color)
 
-pygame.quit()
+    return pixels
+
+if __name__ == "__main__":
+    MapInterface(WIDTH, HEIGHT, heightSettings, generateMap).run()
