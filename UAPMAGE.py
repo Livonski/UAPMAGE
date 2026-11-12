@@ -4,8 +4,16 @@ import random
 import math
 
 WIDTH, HEIGHT, SCALE = 256, 256, 3
+
 SEED = 42
+
 FREQUENCY = 0.02
+OCTAVES = 4
+PERSISTENCE = 0.5
+LACUNARITY = 2.0
+
+OFFSETX = 0
+OFFSETY = 0
 
 def dot(a, b):
     return a[0]*b[0] + a[1]*b[1]
@@ -54,12 +62,33 @@ def perlinNoise(x, y):
 
     return lerp(top, bottom, v)
 
+def fractalNoise(x, y, octaves, frequency, persistence, lacunarity):
+    total = 0
+    maxAmplitude = 0
+
+    amplitude = 1.0
+
+    for i in range(octaves):
+        total += perlinNoise((x + OFFSETX) * frequency, (y + OFFSETY) * frequency) * amplitude
+        
+        maxAmplitude += amplitude
+        
+        frequency *= lacunarity
+        amplitude *= persistence
+
+    return total / maxAmplitude if maxAmplitude > 0 else 0
+
 pixels = bytearray(WIDTH * HEIGHT * 3)
 
 for y in range(HEIGHT):
     for x in range(WIDTH):
-        pValue = int((perlinNoise(x * FREQUENCY, y * FREQUENCY) + 1) / 2 * 255)
+        noise = fractalNoise(x, y, OCTAVES, FREQUENCY, PERSISTENCE, LACUNARITY)
+
+        pValue = int((noise + 1) * 0.5 * 255)
+        pValue = max(0, min(255, pValue))
+
         color = (pValue, pValue, pValue)
+        
         i = (y * WIDTH + x) * 3
         pixels[i:i+3] = bytes(color)
 
