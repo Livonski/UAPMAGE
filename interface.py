@@ -47,6 +47,7 @@ SETTING_CATEGORIES = [
         "source": "biomesSettings",
         "controls": [
             ("Deep water max H", "deepWaterMaxH", 0, 255, 1),
+            ("Shallow water max H", "shallowWaterMaxH", 0, 255, 1),
             ("Mountains max H", "mountainsMaxH", 0, 255, 1),
             ("Plains max T", "plainsMaxT", 0, 255, 1),
             ("Savanna max T", "savannaMaxT", 0, 255, 1),

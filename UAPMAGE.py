@@ -2,16 +2,25 @@ import random
 import math
 import array as arr
 from functools import lru_cache
+from dataclasses import dataclass
 
 from interface import MapInterface
 
 WIDTH, HEIGHT = 256, 256
 
-deepWaterCol = (86,  193, 220)
-plainsCol    = (181, 230, 29)
-mountainsCol = (195, 195, 195)
-savannaCol   = (255, 255, 128)
-desertCol    = (255, 242, 0)
+@dataclass
+class biomeSettings:
+    minH: int
+    maxH: int
+    minT: int
+    maxT: int
+
+deepWaterCol    = (86,  193, 220)
+shallowWaterCol = (153, 217, 234)
+plainsCol       = (181, 230, 29)
+mountainsCol    = (195, 195, 195)
+savannaCol      = (255, 255, 128)
+desertCol       = (255, 242, 0)
 
 heightSettings = {
     "scale": 65.0,
@@ -25,16 +34,27 @@ heightSettings = {
 }
 
 temperatureSettings = {
-    "fallof": 5.0,
+    "fallof": 3.0,
     "strength": 0.7,
-    "heightInfluence": 0.7
+    "heightInfluence": 0.8
 }
 
 biomesSettings = {
-    "deepWaterMaxH": 128,
-    "mountainsMaxH": 180,
-    "plainsMaxT"   : 160,
-    "savannaMaxT"  : 170
+    "deepWater"   : biomeSettings(0,   100, 0,   255),
+    "shallowWater": biomeSettings(101, 128, 0,   255),
+    "mountains"   : biomeSettings(180, 255, 0,   255),
+    "plains"      : biomeSettings(129, 179, 0,   160),
+    "savanna"     : biomeSettings(129, 179, 161, 170),
+    "desert"      : biomeSettings(129, 179, 171, 255),
+}
+
+biomeColors = {
+    "deepWater":    deepWaterCol,
+    "shallowWater": shallowWaterCol,
+    "mountains":    mountainsCol,
+    "plains":       plainsCol,
+    "savanna":      savannaCol,
+    "desert":       desertCol,
 }
 
 def dot(a, b):
@@ -137,6 +157,22 @@ def generateTemperatureMap(settings, heightMap):
 
     return tMap
 
+def evaluateBiomes(height, temperature, settings):
+    closestBiome = None
+    closestDistance = float("inf")
+
+    for name, settings in settings.items():
+        dh = max(settings.minH - height, 0, height - settings.maxH)
+        dt = max(settings.minT - temperature, 0, temperature - settings.maxT)
+        distance = dh * dh + dt * dt
+
+        if distance < closestDistance:
+            closestDistance = distance
+            closestBiome = name
+
+    return biomeColors[closestBiome]
+    
+
 def generateMap():
     pixels = bytearray(WIDTH * HEIGHT * 3)
     hMap = generateHeightMap(heightSettings)
@@ -147,16 +183,8 @@ def generateMap():
             tValue = max(0, min(255, tMap[y * WIDTH + x]))
             i = (y * WIDTH + x) * 3
 
-            if hValue < biomesSettings["deepWaterMaxH"]:
-                color = deepWaterCol
-            elif hValue > biomesSettings["mountainsMaxH"]:
-                color = mountainsCol
-            elif tValue < biomesSettings["plainsMaxT"]:
-                color = plainsCol
-            elif tValue < biomesSettings["savannaMaxT"]:
-                color = savannaCol
-            else:
-                color = desertCol
+            color = evaluateBiomes(hValue, tValue, biomesSettings)
+            #color = shallowWaterCol if hValue < biomesSettings["deepWaterMaxH"] else deepWaterCol
 
             pixels[i:i+3] = bytes(color)
 
