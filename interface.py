@@ -40,6 +40,7 @@ SETTING_CATEGORIES = [
             ("Falloff", "fallof", 0.1, 12.0, 0.1),
             ("Strength", "strength", 0.0, 2.0, 0.05),
             ("Height influence", "heightInfluence", 0.0, 1.0, 0.05),
+            ("Axial tilt", "axialTilt", 0.0, 90.0, 1.0),
         ],
     },
     {

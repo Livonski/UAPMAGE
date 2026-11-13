@@ -34,14 +34,15 @@ heightSettings = {
 }
 
 temperatureSettings = {
-    "fallof": 3.0,
-    "strength": 0.7,
-    "heightInfluence": 0.8
+    "fallof"         : 3.0,
+    "strength"       : 0.7,
+    "heightInfluence": 0.8,
+    "axialTilt"      : 23.5,
 }
 
 biomesSettings = {
-    "deepWater"   : biomeSettings(0,   100, 0,   255),
-    "shallowWater": biomeSettings(101, 128, 0,   255),
+    "deepWater"   : biomeSettings(0,   119, 0,   255),
+    "shallowWater": biomeSettings(120, 128, 0,   255),
     "mountains"   : biomeSettings(180, 255, 0,   255),
     "plains"      : biomeSettings(129, 179, 0,   160),
     "savanna"     : biomeSettings(129, 179, 161, 170),
@@ -69,9 +70,11 @@ def fade(t):
 def smoothStep(v):
     return v * v * (3.0 - 2.0 * v)
 
-def centerWeight(y, h, fallof = 1.0, strength = 1.0, heightInfluence = 0.7):
+def centerWeight(y, h, fallof = 1.0, strength = 1.0, heightInfluence = 0.7, axialTilt = 23.5):
+    tiltFactor = 1.0 + 2.0 * axialTilt / 90.0
+    
     distance = 4.0 * y * (1.0 - y)
-    positionWeight = distance ** fallof
+    positionWeight = distance ** (fallof / tiltFactor)
 
     heightWeight = 1.0 - heightInfluence * smoothStep(h)
 
@@ -151,7 +154,7 @@ def generateTemperatureMap(settings, heightMap):
         for x in range(WIDTH):
             pY = y / HEIGHT
             h = heightMap[y * WIDTH + x] / 255
-            tValue = centerWeight(pY, h, settings["fallof"], settings["strength"], settings["heightInfluence"])
+            tValue = centerWeight(pY, h, settings["fallof"], settings["strength"], settings["heightInfluence"], settings["axialTilt"])
             tValue = int((tValue + 1) * 0.5 * 255)
             tMap.append(tValue)
 
@@ -183,8 +186,9 @@ def generateMap():
             tValue = max(0, min(255, tMap[y * WIDTH + x]))
             i = (y * WIDTH + x) * 3
 
-            color = evaluateBiomes(hValue, tValue, biomesSettings)
+            #color = evaluateBiomes(hValue, tValue, biomesSettings)
             #color = shallowWaterCol if hValue < biomesSettings["deepWaterMaxH"] else deepWaterCol
+            color = (tValue, tValue, tValue)
 
             pixels[i:i+3] = bytes(color)
 
