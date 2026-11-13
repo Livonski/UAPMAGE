@@ -15,6 +15,14 @@ PANELWIDTH = 300
 PANELPADDING = 22
 SLIDERSPACING = 72
 
+# (UI label, displayMode member, cached map name)
+# Add new output types here as the generator gains cached map layers.
+DISPLAY_OPTIONS = [
+    ("FULL", "FULL", None),
+    ("HEIGHT", "HEIGHT", "heightMap"),
+    ("TEMP", "TEMPERATURE", "temperatureMap"),
+]
+
 # (caption, settings key, minimum, maximum, step)
 # Keep the keys EXACTLY as they are spelled in the generator.
 SETTING_CATEGORIES = [
@@ -71,6 +79,20 @@ class MapInterface:
         # The generator owns its dictionaries. We share their references,
         # so changing values here changes what generateMap() will read.
         generatorGlobals = getattr(generateMap, "__globals__", {})
+        self.generatorGlobals = generatorGlobals
+        modeType = generatorGlobals.get("displayMode")
+        self.displayOptions = []
+        for title, modeName, source in DISPLAY_OPTIONS:
+            mode = getattr(modeType, modeName, None)
+            if mode is not None:
+                self.displayOptions.append({
+                    "title": title, "mode": mode, "source": source
+                })
+        if not self.displayOptions:
+            self.displayOptions = [{"title": "FULL", "mode": None, "source": None}]
+        self.displayIndex = 0
+        self.previewCache = {}
+
         self.categories = []
         for definition in SETTING_CATEGORIES:
             settingsDict = (
@@ -123,13 +145,14 @@ class MapInterface:
         if len(requiredPositional) > 1:
             raise TypeError("generateMap must take zero or one required positional argument")
         self.generateTakesSettings = "state" in signature.parameters
+        self.generateHasDisplayMode = "mode" in signature.parameters
 
         self.mapWidth = width * PIXELSCALE
         self.mapHeight = height * PIXELSCALE
         self.panelX = self.mapWidth
         self.sliderX = self.panelX + PANELPADDING
         self.sliderWidth = PANELWIDTH - PANELPADDING * 2
-        self.sliderTop = 157
+        self.sliderTop = 235
         self.contentBottom = self.mapHeight - 66
 
         self.categoryIndex = 0
@@ -138,13 +161,27 @@ class MapInterface:
         self.activeSlider = None
         self.sliderChanged = False
 
-        self.previousRect = pygame.Rect(self.sliderX, 76, 39, 38)
+        gap = 6
+        buttonWidth = (
+            self.sliderWidth - gap * (len(self.displayOptions) - 1)
+        ) // len(self.displayOptions)
+        self.displayRects = [
+            pygame.Rect(
+                self.sliderX + index * (buttonWidth + gap), 80,
+                buttonWidth if index < len(self.displayOptions) - 1
+                else self.sliderWidth - index * (buttonWidth + gap),
+                32,
+            )
+            for index in range(len(self.displayOptions))
+        ]
+
+        self.previousRect = pygame.Rect(self.sliderX, 153, 39, 38)
         self.nextRect = pygame.Rect(
-            self.panelX + PANELWIDTH - PANELPADDING - 39, 76, 39, 38
+            self.panelX + PANELWIDTH - PANELPADDING - 39, 153, 39, 38
         )
-        self.itemPreviousRect = pygame.Rect(self.sliderX, 159, 39, 38)
+        self.itemPreviousRect = pygame.Rect(self.sliderX, 237, 39, 38)
         self.itemNextRect = pygame.Rect(
-            self.panelX + PANELWIDTH - PANELPADDING - 39, 159, 39, 38
+            self.panelX + PANELWIDTH - PANELPADDING - 39, 237, 39, 38
         )
         self.regenerateRect = pygame.Rect(
             self.sliderX, self.mapHeight - 48, self.sliderWidth, 30
@@ -205,31 +242,85 @@ class MapInterface:
             max(0, self.contentBottom - top + 17),
         )
 
-    def regenerateMap(self, stage = None):
+    def regenerateMap(self, stage=None):
+        # Always retain a full biome image so switching display modes never
+        # reruns the generator or invalidates its cached intermediate maps.
         if stage is None:
             stageBySource = {
                 "heightSettings": self.generationStatus.HEIGHTMAP,
                 "temperatureSettings": self.generationStatus.TEMPERATUREMAP,
                 "biomesSettings": self.generationStatus.BIOMEEVALUATION,
             }
-
-            stage = stageBySource.get(self.category["source"], self.generationStatus.START)
+            stage = stageBySource.get(
+                self.category["source"], self.generationStatus.START
+            )
 
         if self.generateTakesSettings:
-            self.pixels = self.generateMap(stage)
+            if self.generateHasDisplayMode:
+                fullMode = next(
+                    (option["mode"] for option in self.displayOptions
+                     if option["source"] is None),
+                    None,
+                )
+                self.fullPixels = self.generateMap(stage, fullMode)
+            else:
+                self.fullPixels = self.generateMap(stage)
         else:
-            self.pixels = self.generateMap()
+            self.fullPixels = self.generateMap()
 
         expectedSize = self.width * self.height * 3
-        if len(self.pixels) != expectedSize:
+        if self.fullPixels is None or len(self.fullPixels) != expectedSize:
+            actualSize = None if self.fullPixels is None else len(self.fullPixels)
             raise ValueError(
-                f"generateMap() returned {len(self.pixels)} bytes; "
+                f"generateMap() returned {actualSize} bytes; "
                 f"expected {expectedSize} RGB bytes"
             )
-        surface = pygame.image.frombuffer(self.pixels, (self.width, self.height), "RGB")
+
+        # A stage may recompute intermediate layers when earlier data is absent.
+        self.previewCache.clear()
+        self.refreshDisplay()
+
+    def refreshDisplay(self):
+        option = self.displayOptions[self.displayIndex]
+        source = option["source"]
+
+        if source is None:
+            self.pixels = self.fullPixels
+        else:
+            if source not in self.previewCache:
+                values = self.generatorGlobals.get(source)
+                if values is None:
+                    self.pixels = self.fullPixels
+                else:
+                    expectedSize = self.width * self.height
+                    if len(values) != expectedSize:
+                        raise ValueError(
+                            f"{source} has {len(values)} elements; "
+                            f"expected {expectedSize}"
+                        )
+                    grayscale = bytearray(expectedSize * 3)
+                    for index, rawValue in enumerate(values):
+                        value = max(0, min(255, int(rawValue)))
+                        offset = index * 3
+                        grayscale[offset:offset + 3] = bytes((value, value, value))
+                    self.previewCache[source] = grayscale
+                    self.pixels = grayscale
+            else:
+                self.pixels = self.previewCache[source]
+
+        surface = pygame.image.frombuffer(
+            self.pixels, (self.width, self.height), "RGB"
+        )
         self.mapImage = pygame.transform.scale(
             surface, (self.mapWidth, self.mapHeight)
         )
+
+    def selectDisplay(self, index):
+        if self.activeSlider is not None:
+            return
+        if 0 <= index < len(self.displayOptions) and index != self.displayIndex:
+            self.displayIndex = index
+            self.refreshDisplay()
 
     def selectCategory(self, index):
         if self.activeSlider is not None:
@@ -288,6 +379,29 @@ class MapInterface:
             (self.panelX, 0, PANELWIDTH, self.mapHeight),
         )
         self.drawText("MAP SETTINGS", self.sliderX, 22, font=self.titleFont)
+        self.drawText("DISPLAY  [1-3]", self.sliderX, 56,
+                      (155, 168, 182), self.smallFont)
+
+        for index, option in enumerate(self.displayOptions):
+            rect = self.displayRects[index]
+            active = index == self.displayIndex
+            background = (53, 104, 143) if active else (45, 51, 60)
+            pygame.draw.rect(self.window, background, rect, border_radius=5)
+            label = self.smallFont.render(
+                option["title"], True,
+                (248, 251, 255) if active else (177, 188, 201),
+            )
+            self.window.blit(
+                label, (
+                    rect.centerx - label.get_width() // 2,
+                    rect.centery - label.get_height() // 2,
+                ),
+            )
+
+        pygame.draw.line(
+            self.window, (57, 65, 75),
+            (self.sliderX, 132), (self.sliderX + self.sliderWidth, 132),
+        )
 
         # Selector always takes one row, regardless of category count.
         pygame.draw.rect(self.window, (45, 51, 60), self.previousRect, border_radius=5)
@@ -299,22 +413,22 @@ class MapInterface:
         labelSurface = self.font.render(categoryLabel, True, (238, 242, 247))
         self.window.blit(
             labelSurface,
-            (self.panelX + (PANELWIDTH - labelSurface.get_width()) // 2, 80),
+            (self.panelX + (PANELWIDTH - labelSurface.get_width()) // 2, 157),
         )
         counter = f"{self.categoryIndex + 1} / {len(self.categories)}"
         counterSurface = self.smallFont.render(counter, True, (155, 168, 182))
         self.window.blit(
             counterSurface,
-            (self.panelX + (PANELWIDTH - counterSurface.get_width()) // 2, 103),
+            (self.panelX + (PANELWIDTH - counterSurface.get_width()) // 2, 180),
         )
 
         pygame.draw.line(
             self.window, (57, 65, 75),
-            (self.sliderX, 132), (self.sliderX + self.sliderWidth, 132),
+            (self.sliderX, 211), (self.sliderX + self.sliderWidth, 211),
         )
 
         if self.hasItems:
-            self.drawText("BIOME", self.sliderX, 143, (155, 168, 182), self.smallFont)
+            self.drawText("BIOME", self.sliderX, 220, (155, 168, 182), self.smallFont)
             pygame.draw.rect(self.window, (45, 51, 60), self.itemPreviousRect, border_radius=5)
             pygame.draw.rect(self.window, (45, 51, 60), self.itemNextRect, border_radius=5)
             self.drawText("<", self.itemPreviousRect.x + 14, self.itemPreviousRect.y + 7)
@@ -324,15 +438,15 @@ class MapInterface:
             displayName = displayName.strip().title()
             itemSurface = self.font.render(displayName, True, (238, 242, 247))
             self.window.blit(itemSurface, (
-                self.panelX + (PANELWIDTH - itemSurface.get_width()) // 2, 168
+                self.panelX + (PANELWIDTH - itemSurface.get_width()) // 2, 246
             ))
             colors = self.category["colors"]
             if isinstance(colors, dict) and self.itemName in colors:
                 pygame.draw.rect(
                     self.window, colors[self.itemName],
-                    (self.sliderX, 205, 18, 12), border_radius=2,
+                    (self.sliderX, 284, 18, 12), border_radius=2,
                 )
-                self.drawText("Biome color", self.sliderX + 25, 202,
+                self.drawText("Biome color", self.sliderX + 25, 281,
                               (153, 164, 177), self.smallFont)
 
         previousClip = self.window.get_clip()
@@ -385,6 +499,10 @@ class MapInterface:
                 return False
             if event.key == pygame.K_r:
                 self.regenerateMap()
+            if event.key in (pygame.K_1, pygame.K_2, pygame.K_3):
+                self.selectDisplay(
+                    (pygame.K_1, pygame.K_2, pygame.K_3).index(event.key)
+                )
             if event.key in (pygame.K_TAB, pygame.K_RIGHT):
                 self.selectCategory(self.categoryIndex + 1)
             elif event.key == pygame.K_LEFT:
@@ -395,6 +513,10 @@ class MapInterface:
                 self.selectItem(1)
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for index, rect in enumerate(self.displayRects):
+                if rect.collidepoint(event.pos):
+                    self.selectDisplay(index)
+                    return True
             if self.previousRect.collidepoint(event.pos):
                 self.selectCategory(self.categoryIndex - 1)
             elif self.nextRect.collidepoint(event.pos):
