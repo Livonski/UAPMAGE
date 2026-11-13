@@ -10,7 +10,6 @@ This module does not import UAPMAGE to avoid circular imports.
 import inspect
 import pygame
 
-
 PIXELSCALE = 3
 PANELWIDTH = 300
 PANELPADDING = 22
@@ -60,13 +59,14 @@ SETTING_CATEGORIES = [
 
 
 class MapInterface:
-    def __init__(self, width, height, settings, generateMap):
+    def __init__(self, width, height, settings, generateMap, generationStatus):
         # Preserve the existing call:
         # MapInterface(WIDTH, HEIGHT, heightSettings, generateMap).run()
         self.width = width
         self.height = height
         self.settings = settings
         self.generateMap = generateMap
+        self.generationStatus = generationStatus
 
         # The generator owns its dictionaries. We share their references,
         # so changing values here changes what generateMap() will read.
@@ -100,6 +100,7 @@ class MapInterface:
 
             self.categories.append({
                 "title": definition["title"],
+                "source": definition["source"],
                 "settings": settingsDict,
                 "controls": definition.get("controls", []),
                 "itemControls": itemControls,
@@ -121,7 +122,7 @@ class MapInterface:
         ]
         if len(requiredPositional) > 1:
             raise TypeError("generateMap must take zero or one required positional argument")
-        self.generateTakesSettings = bool(requiredPositional)
+        self.generateTakesSettings = "state" in signature.parameters
 
         self.mapWidth = width * PIXELSCALE
         self.mapHeight = height * PIXELSCALE
@@ -161,7 +162,7 @@ class MapInterface:
 
         self.pixels = None
         self.mapImage = None
-        self.regenerateMap()
+        self.regenerateMap(generationStatus.START)
 
     @property
     def category(self):
@@ -204,9 +205,18 @@ class MapInterface:
             max(0, self.contentBottom - top + 17),
         )
 
-    def regenerateMap(self):
+    def regenerateMap(self, stage = None):
+        if stage is None:
+            stageBySource = {
+                "heightSettings": self.generationStatus.HEIGHTMAP,
+                "temperatureSettings": self.generationStatus.TEMPERATUREMAP,
+                "biomesSettings": self.generationStatus.BIOMEEVALUATION,
+            }
+
+            stage = stageBySource.get(self.category["source"], self.generationStatus.START)
+
         if self.generateTakesSettings:
-            self.pixels = self.generateMap(self.settings)
+            self.pixels = self.generateMap(stage)
         else:
             self.pixels = self.generateMap()
 

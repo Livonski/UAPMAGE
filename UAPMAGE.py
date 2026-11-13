@@ -1,12 +1,25 @@
 import random
 import math
 import array as arr
+from enum import Enum
 from functools import lru_cache
 from dataclasses import dataclass
 
 from interface import MapInterface
 
 WIDTH, HEIGHT = 256, 256
+
+class displayMode(Enum):
+    FULL = 1
+    HEIGHT = 2
+    TEMPERATURE = 3
+
+class generationStatus(Enum):
+    START           = 1
+    HEIGHTMAP       = 2
+    TEMPERATUREMAP  = 3
+    BIOMEEVALUATION = 4
+    FINISH          = 5
 
 @dataclass
 class biomeSettings:
@@ -136,6 +149,16 @@ def fractalNoise(x, y, settings):
 
     return total / maxAmplitude if maxAmplitude > 0 else 0
 
+def fillPixels(pixels, map):
+    pixels = bytearray(WIDTH * HEIGHT * 3)
+    for y in range(HEIGHT):
+        for x in range(WIDTH):
+            value = max(0, min(255, map[y * WIDTH + x]))
+            color = (value, value, value)
+            i = (y * WIDTH + x) * 3
+            pixels[i:i+3] = bytes(color)
+    return pixels
+
 def generateHeightMap(settings):
     hMap = arr.array('i')
 
@@ -174,25 +197,52 @@ def evaluateBiomes(height, temperature, settings):
             closestBiome = name
 
     return biomeColors[closestBiome]
-    
 
-def generateMap():
-    pixels = bytearray(WIDTH * HEIGHT * 3)
-    hMap = generateHeightMap(heightSettings)
-    tMap = generateTemperatureMap(temperatureSettings, hMap)
-    for y in range(HEIGHT):
-        for x in range(WIDTH):
-            hValue = max(0, min(255, hMap[y * WIDTH + x]))
-            tValue = max(0, min(255, tMap[y * WIDTH + x]))
-            i = (y * WIDTH + x) * 3
+heightMap = None
+temperatureMap = None
+pixels = None
 
-            #color = evaluateBiomes(hValue, tValue, biomesSettings)
-            #color = shallowWaterCol if hValue < biomesSettings["deepWaterMaxH"] else deepWaterCol
-            color = (tValue, tValue, tValue)
+class displayMode(Enum):
+    FULL = 1
+    HEIGHT = 2
+    TEMPERATURE = 3
 
-            pixels[i:i+3] = bytes(color)
+def generateMap(state = generationStatus.START, mode = displayMode.FULL):
+    global heightMap, temperatureMap, pixels
 
-    return pixels
+    if state == generationStatus.START:
+        state = generationStatus.HEIGHTMAP
 
+    if not isinstance(state, generationStatus):
+        raise ValueError(f"Unknown generation status: {state!r}")
+
+    if state.value <= generationStatus.HEIGHTMAP.value or heightMap is None:
+        heightMap = generateHeightMap(heightSettings)
+        temperatureMap = None
+        pixels = None
+        if mode.value == displayMode.HEIGHT.value:
+            pixels = fillPixels(pixels, heightMap)
+            return pixels
+
+    if state.value <= generationStatus.TEMPERATUREMAP.value or temperatureMap is None:
+        temperatureMap = generateTemperatureMap(temperatureSettings, heightMap)
+        pixels = None
+        if mode.value == displayMode.TEMPERATURE.value:
+            pixels = fillPixels(pixels, temperatureMap)
+            return pixels
+
+    if state.value <= generationStatus.BIOMEEVALUATION.value or pixels is None:
+        pixels = bytearray(WIDTH * HEIGHT * 3)
+        for y in range(HEIGHT):
+            for x in range(WIDTH):
+                hValue = max(0, min(255, heightMap[y * WIDTH + x]))
+                tValue = max(0, min(255, temperatureMap[y * WIDTH + x]))
+                i = (y * WIDTH + x) * 3
+                color = evaluateBiomes(hValue, tValue, biomesSettings)
+                #color = shallowWaterCol if hValue < biomesSettings["deepWaterMaxH"] else deepWaterCol
+                #color = (tValue, tValue, tValue)
+                pixels[i:i+3] = bytes(color)
+        return pixels
+            
 if __name__ == "__main__":
-    MapInterface(WIDTH, HEIGHT, heightSettings, generateMap).run()
+    MapInterface(WIDTH, HEIGHT, heightSettings, generateMap, generationStatus).run()
