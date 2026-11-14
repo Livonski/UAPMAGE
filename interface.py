@@ -21,6 +21,7 @@ DISPLAY_OPTIONS = [
     ("FULL", "FULL", None),
     ("HEIGHT", "HEIGHT", "heightMap"),
     ("TEMP", "TEMPERATURE", "temperatureMap"),
+    ("MOISTURE", "MOISTURE", "moistureMap"),
 ]
 
 # (caption, settings key, minimum, maximum, step)
@@ -48,6 +49,18 @@ SETTING_CATEGORIES = [
             ("Strength", "strength", 0.0, 2.0, 0.05),
             ("Height influence", "heightInfluence", 0.0, 1.0, 0.05),
             ("Axial tilt", "axialTilt", 0.0, 90.0, 1.0),
+        ],
+    },
+    {
+        "title": "MOISTURE",
+        "source": "moistureSettings",
+        "controls": [
+            ("Wind direction", "windAngle", 0.0, 360.0, 1.0),
+            ("Ocean evaporation", "oceanEvaporation", 0.0, 1.0, 0.01),
+            ("Land evaporation", "landEvaporation", 0.0, 1.0, 0.001),
+            ("Precipitation rate", "precipitationRate", 0.0, 1.0, 0.005),
+            ("Orographic strength", "orographicStrength", 0.0, 10.0, 0.1),
+            ("noise influence", "noiseInfluence", 0.0, 1.0, 0.05),
         ],
     },
     {
@@ -249,6 +262,7 @@ class MapInterface:
             stageBySource = {
                 "heightSettings": self.generationStatus.HEIGHTMAP,
                 "temperatureSettings": self.generationStatus.TEMPERATUREMAP,
+                "moistureSettings": self.generationStatus.MOISTUREMAP,
                 "biomesSettings": self.generationStatus.BIOMEEVALUATION,
             }
             stage = stageBySource.get(
