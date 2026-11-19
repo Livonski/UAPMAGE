@@ -74,6 +74,8 @@ SETTING_CATEGORIES = [
             ("Max height", "maxH", 0, 255, 1),
             ("Min temperature", "minT", 0, 255, 1),
             ("Max temperature", "maxT", 0, 255, 1),
+            ("Min moisture", "minM", 0, 255, 1),
+            ("Max moisture", "maxM", 0, 255, 1),
         ],
     },
 ]

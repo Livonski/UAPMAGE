@@ -61,7 +61,7 @@ temperatureSettings = {
 
 moistureSettings = {
     "windAngle"         : 100.0,
-    "oceanEvaporation"  : 0.08,
+    "oceanEvaporation"  : 0.1,
     "landEvaporation"   : 0.04,
     "precipitationRate" : 0.04,
     "orographicStrength": 1.0,
@@ -72,8 +72,8 @@ biomesSettings = {
     "deepWater"   : biomeSettings(0,   119, 0,   255, 0,   255),
     "shallowWater": biomeSettings(120, 128, 0,   255, 0,   255),
     "mountains"   : biomeSettings(180, 255, 0,   255, 0,   255),
-    "plains"      : biomeSettings(129, 179, 0,   160, 151, 255),
-    "forest"      : biomeSettings(129, 179, 0,   160, 171, 255),
+    "plains"      : biomeSettings(129, 179, 0,   150, 151, 190),
+    "forest"      : biomeSettings(129, 179, 0,   160, 171, 200),
     "swamp"       : biomeSettings(129, 179, 0,   160, 191, 255),
     "savanna"     : biomeSettings(129, 179, 161, 170, 101, 150),
     "desert"      : biomeSettings(129, 179, 171, 255, 0,   100),
@@ -212,6 +212,14 @@ def generateTemperatureMap(settings, heightMap):
             tMap.append(tValue)
 
     return tMap
+
+#def generateRivers(hMap):
+#    startX = WIDTH / 2
+#    startY = HEIGHT / 2
+#    pos = startY * WIDTH + startX
+#
+#    while hMap[pos] > biomesSettings["shallowWater"].maxH /255.0
+
 
 def calculateEvaporation(h, t):
     waterLevel = biomesSettings["shallowWater"].maxH /255.0
